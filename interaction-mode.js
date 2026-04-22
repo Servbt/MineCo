@@ -34,6 +34,30 @@ function getCopyRoomCodeStatusMessage(roomCode, copied) {
   return `Room code ${roomCode} is ready to share.`;
 }
 
+function supportsNativeShare(nativeShareFn, roomCode) {
+  return typeof nativeShareFn === 'function' && Boolean(roomCode);
+}
+
+function getShareRoomCodeButtonLabel(canShare) {
+  return canShare ? 'Share code' : 'Share unavailable';
+}
+
+function getShareRoomCodeStatusMessage(roomCode, shared) {
+  if (!roomCode) {
+    return 'Create a room first to share the code.';
+  }
+
+  if (shared) {
+    return `Share sheet opened for room code ${roomCode}.`;
+  }
+
+  return `Room code ${roomCode} is ready to share from your phone.`;
+}
+
+function getLongPressVibrationPattern() {
+  return [35];
+}
+
 const exported = {
   getPrimaryAction,
   getFlagModeButtonLabel,
@@ -41,6 +65,10 @@ const exported = {
   shouldFlagOnLongPress,
   getCopyRoomCodeButtonLabel,
   getCopyRoomCodeStatusMessage,
+  supportsNativeShare,
+  getShareRoomCodeButtonLabel,
+  getShareRoomCodeStatusMessage,
+  getLongPressVibrationPattern,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

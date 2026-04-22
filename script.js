@@ -19,6 +19,7 @@ const joinRoomButton = document.getElementById("join-room-button");
 const roomCodeInput = document.getElementById("room-code-input");
 const flagModeButton = document.getElementById("flag-mode-button");
 const copyRoomCodeButton = document.getElementById("copy-room-code-button");
+const shareRoomCodeButton = document.getElementById("share-room-code-button");
 
 const {
   getPrimaryAction: getTilePrimaryAction,
@@ -27,6 +28,10 @@ const {
   shouldFlagOnLongPress: shouldTriggerFlagOnLongPress,
   getCopyRoomCodeButtonLabel: getCopyRoomCodeButtonText,
   getCopyRoomCodeStatusMessage: getCopyRoomCodeMessage,
+  supportsNativeShare: canUseNativeShare,
+  getShareRoomCodeButtonLabel: getShareRoomCodeButtonText,
+  getShareRoomCodeStatusMessage: getShareRoomCodeMessage,
+  getLongPressVibrationPattern: getLongPressVibrationPulse,
 } = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
@@ -188,6 +193,9 @@ function updateHUD() {
   playerCountElement.textContent = `${state.players.length} / 2`;
   copyRoomCodeButton.disabled = !state.roomCode;
   copyRoomCodeButton.textContent = getCopyRoomCodeButtonText(client.roomCodeCopied && Boolean(state.roomCode));
+  const shareAvailable = canUseNativeShare(navigator.share, state.roomCode);
+  shareRoomCodeButton.disabled = !shareAvailable;
+  shareRoomCodeButton.textContent = getShareRoomCodeButtonText(shareAvailable);
 }
 
 function updateStatus() {
@@ -328,6 +336,38 @@ async function copyRoomCode() {
   }
 }
 
+async function shareRoomCode() {
+  const roomCode = client.localState.roomCode;
+
+  if (!roomCode) {
+    setStatus(getShareRoomCodeMessage('', false));
+    return;
+  }
+
+  if (!canUseNativeShare(navigator.share, roomCode)) {
+    setStatus(`Sharing is not available on this device. Use room code ${roomCode} manually.`);
+    return;
+  }
+
+  try {
+    await navigator.share({
+      title: 'MineCo room code',
+      text: `Join my MineCo room with code ${roomCode}.`,
+    });
+    setStatus(getShareRoomCodeMessage(roomCode, true));
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      setStatus(`Could not open the share sheet for room code ${roomCode}.`);
+    }
+  }
+}
+
+function pulseLongPressFeedback() {
+  if (typeof navigator.vibrate === 'function') {
+    navigator.vibrate(getLongPressVibrationPulse());
+  }
+}
+
 function beginLongPress(tile, pointerId) {
   if (client.flagMode) {
     return;
@@ -344,6 +384,7 @@ function beginLongPress(tile, pointerId) {
   client.longPress.timerId = setTimeout(() => {
     client.longPress.handled = true;
     client.suppressClickTileKey = tileKey;
+    pulseLongPressFeedback();
     sendAction('flag', row, col);
   }, 250);
 }
@@ -563,6 +604,7 @@ joinRoomButton.addEventListener("click", joinRoom);
 resetButton.addEventListener("click", restartRoom);
 flagModeButton.addEventListener("click", toggleFlagMode);
 copyRoomCodeButton.addEventListener("click", copyRoomCode);
+shareRoomCodeButton.addEventListener("click", shareRoomCode);
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });

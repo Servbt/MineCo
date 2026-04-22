@@ -8,6 +8,10 @@ const {
   shouldFlagOnLongPress,
   getCopyRoomCodeButtonLabel,
   getCopyRoomCodeStatusMessage,
+  supportsNativeShare,
+  getShareRoomCodeButtonLabel,
+  getShareRoomCodeStatusMessage,
+  getLongPressVibrationPattern,
 } = require('../interaction-mode.js');
 
 test('primary tile action is reveal when flag mode is off', () => {
@@ -49,4 +53,25 @@ test('copy room code status message reflects room availability and copy success'
   assert.equal(getCopyRoomCodeStatusMessage('', false), 'Create a room first to copy the code.');
   assert.equal(getCopyRoomCodeStatusMessage('ABC123', false), 'Room code ABC123 is ready to share.');
   assert.equal(getCopyRoomCodeStatusMessage('ABC123', true), 'Copied room code ABC123. Send it to your teammate.');
+});
+
+test('native share support requires both the API and a room code', () => {
+  assert.equal(supportsNativeShare(undefined, 'ABC123'), false);
+  assert.equal(supportsNativeShare(() => {}, ''), false);
+  assert.equal(supportsNativeShare(() => {}, 'ABC123'), true);
+});
+
+test('share room button label reflects whether sharing is available', () => {
+  assert.equal(getShareRoomCodeButtonLabel(false), 'Share unavailable');
+  assert.equal(getShareRoomCodeButtonLabel(true), 'Share code');
+});
+
+test('share room status message reflects availability and success', () => {
+  assert.equal(getShareRoomCodeStatusMessage('', false), 'Create a room first to share the code.');
+  assert.equal(getShareRoomCodeStatusMessage('ABC123', false), 'Room code ABC123 is ready to share from your phone.');
+  assert.equal(getShareRoomCodeStatusMessage('ABC123', true), 'Share sheet opened for room code ABC123.');
+});
+
+test('long press vibration uses a short touch-friendly pulse', () => {
+  assert.deepEqual(getLongPressVibrationPattern(), [35]);
 });
