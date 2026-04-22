@@ -394,6 +394,16 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && /^\/api\/rooms\/[A-Z0-9]+\/session$/.test(pathname)) {
+      const roomCode = pathname.split("/")[3];
+      const playerId = url.searchParams.get("playerId");
+      const room = getRoomOrFail(roomCode);
+
+      requirePlayer(room, playerId);
+      sendJson(response, 200, { ok: true, roomCode, playerId });
+      return;
+    }
+
     if (request.method === "GET" && /^\/api\/rooms\/[A-Z0-9]+\/events$/.test(pathname)) {
       const roomCode = pathname.split("/")[3];
       const playerId = url.searchParams.get("playerId");

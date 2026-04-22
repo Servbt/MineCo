@@ -109,3 +109,47 @@ test('a second player can still join after solo play has already started', async
     server.kill('SIGTERM');
   }
 });
+
+test('a saved player session can be validated for reconnect after refresh', async () => {
+  const server = await startServer();
+
+  try {
+    const createResult = await request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ level: 'beginner' }),
+    });
+
+    const reconnectResult = await request(
+      `/api/rooms/${createResult.body.roomCode}/session?playerId=${encodeURIComponent(createResult.body.playerId)}`,
+    );
+
+    assert.equal(reconnectResult.response.status, 200);
+    assert.deepEqual(reconnectResult.body, {
+      ok: true,
+      roomCode: createResult.body.roomCode,
+      playerId: createResult.body.playerId,
+    });
+  } finally {
+    server.kill('SIGTERM');
+  }
+});
+
+test('reconnect validation rejects stale player sessions', async () => {
+  const server = await startServer();
+
+  try {
+    const createResult = await request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ level: 'beginner' }),
+    });
+
+    const reconnectResult = await request(
+      `/api/rooms/${createResult.body.roomCode}/session?playerId=missing-player`,
+    );
+
+    assert.equal(reconnectResult.response.status, 400);
+    assert.equal(reconnectResult.body.error, 'Player not found in this room.');
+  } finally {
+    server.kill('SIGTERM');
+  }
+});

@@ -82,6 +82,37 @@ function getRoomCodeFromLocationSearch(search) {
   return sanitizeRoomCode(params.get('room'));
 }
 
+function getReconnectStorageKey() {
+  return 'mineco:last-room-session';
+}
+
+function createReconnectState(roomCode, playerId) {
+  const normalizedRoomCode = sanitizeRoomCode(roomCode);
+  const normalizedPlayerId = String(playerId || '').trim();
+
+  if (!normalizedRoomCode || !normalizedPlayerId) {
+    return null;
+  }
+
+  return {
+    roomCode: normalizedRoomCode,
+    playerId: normalizedPlayerId,
+  };
+}
+
+function parseReconnectState(serializedState) {
+  if (!serializedState) {
+    return null;
+  }
+
+  try {
+    const parsedState = JSON.parse(serializedState);
+    return createReconnectState(parsedState.roomCode, parsedState.playerId);
+  } catch (error) {
+    return null;
+  }
+}
+
 function getLongPressVibrationPattern() {
   return [35];
 }
@@ -99,6 +130,9 @@ const exported = {
   getLongPressVibrationPattern,
   getInviteLink,
   getRoomCodeFromLocationSearch,
+  getReconnectStorageKey,
+  createReconnectState,
+  parseReconnectState,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

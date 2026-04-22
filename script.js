@@ -34,6 +34,9 @@ const {
   getLongPressVibrationPattern: getLongPressVibrationPulse,
   getInviteLink: getRoomInviteLink,
   getRoomCodeFromLocationSearch: getRoomCodeFromUrlSearch,
+  getReconnectStorageKey: getReconnectStorageKeyName,
+  createReconnectState: buildReconnectState,
+  parseReconnectState: parseSavedReconnectState,
 } = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
@@ -58,6 +61,7 @@ const client = {
     handled: false,
   },
   suppressClickTileKey: null,
+  pendingReconnectNotice: null,
   localState: createLocalPlaceholder(),
 };
 
@@ -116,6 +120,11 @@ function updateFromServer(payload) {
   updateHUD();
   updateStatus();
   updateIdentity();
+
+  if (client.pendingReconnectNotice) {
+    setStatus(client.pendingReconnectNotice);
+    client.pendingReconnectNotice = null;
+  }
 }
 
 function renderBoard() {
@@ -297,11 +306,84 @@ function restoreRoomCodeFromUrl() {
   const roomCodeFromUrl = getRoomCodeFromUrlSearch(window.location.search);
 
   if (!roomCodeFromUrl) {
-    return;
+    return false;
   }
 
   roomCodeInput.value = roomCodeFromUrl;
   setStatus(`Room code ${roomCodeFromUrl} loaded from the invite link. Tap Join when you're ready.`);
+  return true;
+}
+
+function getReconnectSessionStorage() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistReconnectState(roomCode = client.roomCode, playerId = client.playerId) {
+  const storage = getReconnectSessionStorage();
+  const reconnectState = buildReconnectState(roomCode, playerId);
+
+  if (!storage || !reconnectState) {
+    return;
+  }
+
+  storage.setItem(getReconnectStorageKeyName(), JSON.stringify(reconnectState));
+}
+
+function clearReconnectState() {
+  const storage = getReconnectSessionStorage();
+
+  if (!storage) {
+    return;
+  }
+
+  storage.removeItem(getReconnectStorageKeyName());
+}
+
+function getSavedReconnectState() {
+  const storage = getReconnectSessionStorage();
+
+  if (!storage) {
+    return null;
+  }
+
+  return parseSavedReconnectState(storage.getItem(getReconnectStorageKeyName()));
+}
+
+async function validateReconnectState(reconnectState) {
+  return requestJson(
+    `/api/rooms/${reconnectState.roomCode}/session?playerId=${encodeURIComponent(reconnectState.playerId)}`,
+  );
+}
+
+async function reconnectToLastRoom() {
+  const roomCodeFromUrl = getRoomCodeFromUrlSearch(window.location.search);
+  const reconnectState = getSavedReconnectState();
+
+  if (roomCodeFromUrl && (!reconnectState || reconnectState.roomCode !== roomCodeFromUrl)) {
+    restoreRoomCodeFromUrl();
+    return;
+  }
+
+  if (!reconnectState) {
+    restoreRoomCodeFromUrl();
+    return;
+  }
+
+  try {
+    await validateReconnectState(reconnectState);
+    client.pendingReconnectNotice = `Reconnected to room ${reconnectState.roomCode} after refresh.`;
+    connectToRoom(reconnectState.roomCode, reconnectState.playerId);
+  } catch (error) {
+    clearReconnectState();
+
+    if (!restoreRoomCodeFromUrl()) {
+      setStatus('Your last room is no longer available. Create a room or join a friend to start playing together.');
+    }
+  }
 }
 
 function getTileKey(row, col) {
@@ -507,6 +589,7 @@ function connectToRoom(roomCode, playerId) {
   client.playerId = playerId;
   roomCodeInput.value = roomCode;
   syncRoomCodeToUrl(roomCode);
+  persistReconnectState(roomCode, playerId);
 
   if (client.eventSource) {
     client.eventSource.close();
@@ -659,4 +742,4 @@ renderBoard();
 updateHUD();
 updateStatus();
 updateIdentity();
-restoreRoomCodeFromUrl();
+reconnectToLastRoom();

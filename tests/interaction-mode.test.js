@@ -14,6 +14,9 @@ const {
   getLongPressVibrationPattern,
   getInviteLink,
   getRoomCodeFromLocationSearch,
+  getReconnectStorageKey,
+  createReconnectState,
+  parseReconnectState,
 } = require('../interaction-mode.js');
 
 test('primary tile action is reveal when flag mode is off', () => {
@@ -86,6 +89,29 @@ test('room code can be restored from the URL search params', () => {
   assert.equal(getRoomCodeFromLocationSearch('?room=abc123'), 'ABC123');
   assert.equal(getRoomCodeFromLocationSearch('?unused=value'), '');
   assert.equal(getRoomCodeFromLocationSearch('?room=a!b@1#2c3'), 'AB12C3');
+});
+
+test('reconnect storage key stays stable', () => {
+  assert.equal(getReconnectStorageKey(), 'mineco:last-room-session');
+});
+
+test('reconnect state only persists when both room code and player id are valid', () => {
+  assert.deepEqual(createReconnectState('abc123', 'player-1'), {
+    roomCode: 'ABC123',
+    playerId: 'player-1',
+  });
+  assert.equal(createReconnectState('', 'player-1'), null);
+  assert.equal(createReconnectState('abc123', ''), null);
+});
+
+test('reconnect state parsing ignores malformed or incomplete payloads', () => {
+  assert.deepEqual(parseReconnectState('{"roomCode":"abc123","playerId":"player-1"}'), {
+    roomCode: 'ABC123',
+    playerId: 'player-1',
+  });
+  assert.equal(parseReconnectState('{"roomCode":"abc123"}'), null);
+  assert.equal(parseReconnectState('not json'), null);
+  assert.equal(parseReconnectState(''), null);
 });
 
 test('long press vibration uses a short touch-friendly pulse', () => {
