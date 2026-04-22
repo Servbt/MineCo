@@ -25,6 +25,29 @@ function sanitizeRoomCode(roomCode) {
     .slice(0, 6);
 }
 
+const COLOR_SCHEMES = [
+  { id: 'sunset', label: 'Sunset', accent: '#c96b3b', accentAlt: '#2f6b78' },
+  { id: 'forest', label: 'Forest', accent: '#2f7a4b', accentAlt: '#c96a3d' },
+  { id: 'ocean', label: 'Ocean', accent: '#2a6f97', accentAlt: '#f4a261' },
+  { id: 'violet', label: 'Violet', accent: '#7353ba', accentAlt: '#f2a65a' },
+  { id: 'ember', label: 'Ember', accent: '#c44536', accentAlt: '#2a9d8f' },
+];
+
+function getAvailableColorSchemes() {
+  return COLOR_SCHEMES.map((scheme) => ({ ...scheme }));
+}
+
+function normalizeColorScheme(colorScheme) {
+  const normalizedColorScheme = String(colorScheme || '').trim().toLowerCase();
+  return COLOR_SCHEMES.some((scheme) => scheme.id === normalizedColorScheme)
+    ? normalizedColorScheme
+    : 'sunset';
+}
+
+function getColorSchemeStorageKey() {
+  return 'mineco:color-scheme';
+}
+
 function getCopyRoomCodeButtonLabel(copied) {
   return copied ? 'Copied link!' : 'Copy invite link';
 }
@@ -133,6 +156,9 @@ const exported = {
   getReconnectStorageKey,
   createReconnectState,
   parseReconnectState,
+  getAvailableColorSchemes,
+  normalizeColorScheme,
+  getColorSchemeStorageKey,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

@@ -18,6 +18,7 @@ const createRoomButton = document.getElementById("create-room-button");
 const joinRoomButton = document.getElementById("join-room-button");
 const roomCodeInput = document.getElementById("room-code-input");
 const playModeSelect = document.getElementById("play-mode");
+const colorSchemeSelect = document.getElementById("color-scheme");
 const flagModeButton = document.getElementById("flag-mode-button");
 const copyRoomCodeButton = document.getElementById("copy-room-code-button");
 const shareRoomCodeButton = document.getElementById("share-room-code-button");
@@ -38,6 +39,9 @@ const {
   getReconnectStorageKey: getReconnectStorageKeyName,
   createReconnectState: buildReconnectState,
   parseReconnectState: parseSavedReconnectState,
+  getAvailableColorSchemes: getThemeOptions,
+  normalizeColorScheme: normalizeThemeId,
+  getColorSchemeStorageKey: getColorSchemeStorageKeyName,
 } = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
@@ -52,6 +56,7 @@ const client = {
   eventSource: null,
   timerId: null,
   flagMode: false,
+  colorScheme: normalizeThemeId('sunset'),
   roomCodeCopied: false,
   roomCodeCopyTimeoutId: null,
   longPress: {
@@ -100,6 +105,55 @@ function buildBoard(rows, cols) {
       flaggedBy: null,
     })),
   );
+}
+
+function getColorSchemeStorage() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function applyColorScheme(colorScheme) {
+  const normalizedColorScheme = normalizeThemeId(colorScheme);
+  client.colorScheme = normalizedColorScheme;
+  document.body.dataset.theme = normalizedColorScheme;
+
+  if (colorSchemeSelect) {
+    colorSchemeSelect.value = normalizedColorScheme;
+  }
+
+  return normalizedColorScheme;
+}
+
+function persistColorScheme(colorScheme = client.colorScheme) {
+  const storage = getColorSchemeStorage();
+
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(getColorSchemeStorageKeyName(), normalizeThemeId(colorScheme));
+}
+
+function restoreColorScheme() {
+  const storage = getColorSchemeStorage();
+  const savedColorScheme = storage ? storage.getItem(getColorSchemeStorageKeyName()) : null;
+  return applyColorScheme(savedColorScheme);
+}
+
+function populateColorSchemeOptions() {
+  colorSchemeSelect.innerHTML = '';
+
+  for (const scheme of getThemeOptions()) {
+    const option = document.createElement('option');
+    option.value = scheme.id;
+    option.textContent = `${scheme.label} · ${scheme.accent} / ${scheme.accentAlt}`;
+    colorSchemeSelect.appendChild(option);
+  }
+
+  colorSchemeSelect.value = client.colorScheme;
 }
 
 function updateFromServer(payload) {
@@ -777,6 +831,10 @@ resetButton.addEventListener("click", restartRoom);
 flagModeButton.addEventListener("click", toggleFlagMode);
 copyRoomCodeButton.addEventListener("click", copyRoomCode);
 shareRoomCodeButton.addEventListener("click", shareRoomCode);
+colorSchemeSelect.addEventListener("change", () => {
+  applyColorScheme(colorSchemeSelect.value);
+  persistColorScheme();
+});
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });
@@ -788,6 +846,8 @@ window.addEventListener("beforeunload", () => {
 });
 
 updateFlagModeButton();
+populateColorSchemeOptions();
+restoreColorScheme();
 renderBoard();
 updateHUD();
 updateStatus();

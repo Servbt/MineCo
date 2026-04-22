@@ -17,6 +17,9 @@ const {
   getReconnectStorageKey,
   createReconnectState,
   parseReconnectState,
+  getAvailableColorSchemes,
+  normalizeColorScheme,
+  getColorSchemeStorageKey,
 } = require('../interaction-mode.js');
 
 test('primary tile action is reveal when flag mode is off', () => {
@@ -112,6 +115,23 @@ test('reconnect state parsing ignores malformed or incomplete payloads', () => {
   assert.equal(parseReconnectState('{"roomCode":"abc123"}'), null);
   assert.equal(parseReconnectState('not json'), null);
   assert.equal(parseReconnectState(''), null);
+});
+
+test('five complementary color schemes are available to players', () => {
+  assert.deepEqual(
+    getAvailableColorSchemes().map((scheme) => scheme.id),
+    ['sunset', 'forest', 'ocean', 'violet', 'ember'],
+  );
+});
+
+test('invalid color schemes fall back to the default theme', () => {
+  assert.equal(normalizeColorScheme('ocean'), 'ocean');
+  assert.equal(normalizeColorScheme('unknown'), 'sunset');
+  assert.equal(normalizeColorScheme(''), 'sunset');
+});
+
+test('color scheme storage key stays stable', () => {
+  assert.equal(getColorSchemeStorageKey(), 'mineco:color-scheme');
 });
 
 test('long press vibration uses a short touch-friendly pulse', () => {
