@@ -17,6 +17,7 @@ const playerNameElement = document.getElementById("player-name");
 const createRoomButton = document.getElementById("create-room-button");
 const joinRoomButton = document.getElementById("join-room-button");
 const roomCodeInput = document.getElementById("room-code-input");
+const playModeSelect = document.getElementById("play-mode");
 const flagModeButton = document.getElementById("flag-mode-button");
 const copyRoomCodeButton = document.getElementById("copy-room-code-button");
 const shareRoomCodeButton = document.getElementById("share-room-code-button");
@@ -68,6 +69,7 @@ const client = {
 function createLocalPlaceholder() {
   return {
     level: "beginner",
+    playMode: "simultaneous",
     rows: DIFFICULTIES.beginner.rows,
     cols: DIFFICULTIES.beginner.cols,
     mineTotal: DIFFICULTIES.beginner.mines,
@@ -79,6 +81,7 @@ function createLocalPlaceholder() {
     startedAt: null,
     elapsedSeconds: 0,
     players: [],
+    currentTurnPlayerNumber: 1,
     roomCode: null,
     lastAction: null,
   };
@@ -115,6 +118,7 @@ function updateFromServer(payload) {
   }
 
   difficultySelect.value = client.localState.level;
+  playModeSelect.value = client.localState.playMode || "simultaneous";
   renderBoard();
   renderRoster();
   updateHUD();
@@ -127,12 +131,27 @@ function updateFromServer(payload) {
   }
 }
 
+function isTurnBasedRoom(state = client.localState) {
+  return state.playMode === "turn-based";
+}
+
+function isCurrentPlayersTurn(state = client.localState) {
+  if (!isTurnBasedRoom(state) || state.players.length < 2) {
+    return true;
+  }
+
+  return client.playerNumber === state.currentTurnPlayerNumber;
+}
+
 function renderBoard() {
   const state = client.localState;
   boardElement.innerHTML = "";
   boardElement.style.gridTemplateColumns = `repeat(${state.cols}, minmax(0, 1fr))`;
 
-  const canInteract = Boolean(client.roomCode) && !state.gameOver && state.players.length >= 1;
+  const canInteract = Boolean(client.roomCode)
+    && !state.gameOver
+    && state.players.length >= 1
+    && isCurrentPlayersTurn(state);
 
   for (let row = 0; row < state.rows; row += 1) {
     for (let col = 0; col < state.cols; col += 1) {
@@ -211,6 +230,8 @@ function updateHUD() {
 
 function updateStatus() {
   const state = client.localState;
+  const activePlayer = state.players.find((player) => player.playerNumber === state.currentTurnPlayerNumber);
+  const activePlayerName = activePlayer ? activePlayer.name : `Player ${state.currentTurnPlayerNumber || 1}`;
 
   if (!client.roomCode) {
     setStatus("Create a room or join a friend to start playing together.");
@@ -220,13 +241,25 @@ function updateStatus() {
 
   if (state.players.length < 2) {
     if (state.firstMove) {
-      setStatus("Solo mode is ready. Start now, or share the invite link to turn it into co-op.");
+      setStatus(
+        isTurnBasedRoom(state)
+          ? "Turn-based mode is ready. Player 1 will start, and player 2 can join anytime."
+          : "Solo mode is ready. Start now, or share the invite link to turn it into co-op.",
+      );
     } else if (state.lastAction) {
       const actor = state.players.find((player) => player.playerNumber === state.lastAction.playerNumber);
       const verb = state.lastAction.type === "flag" ? "flagged" : "revealed";
-      setStatus(`${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Share the invite link anytime for co-op.`);
+      setStatus(
+        isTurnBasedRoom(state)
+          ? `${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Player 2 will take the next turn when they join.`
+          : `${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Share the invite link anytime for co-op.`,
+      );
     } else {
-      setStatus("Solo mode is ready. Start now, or share the invite link to turn it into co-op.");
+      setStatus(
+        isTurnBasedRoom(state)
+          ? "Turn-based mode is ready. Player 1 will start, and player 2 can join anytime."
+          : "Solo mode is ready. Start now, or share the invite link to turn it into co-op.",
+      );
     }
     resetButton.textContent = ":)";
     return;
@@ -236,6 +269,21 @@ function updateStatus() {
     const lost = state.lastAction && state.board[state.lastAction.row][state.lastAction.col].isMine;
     setStatus(lost ? "Boom. The team hit a mine." : "Board cleared. Team victory.");
     resetButton.textContent = lost ? "X(" : "B)";
+    return;
+  }
+
+  if (isTurnBasedRoom(state)) {
+    if (state.firstMove) {
+      setStatus(`${activePlayerName} goes first in turn-based mode.`);
+    } else if (state.lastAction) {
+      const actor = state.players.find((player) => player.playerNumber === state.lastAction.playerNumber);
+      const verb = state.lastAction.type === "flag" ? "flagged" : "revealed";
+      setStatus(`${actor ? actor.name : "A player"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. ${activePlayerName} is up next.`);
+    } else {
+      setStatus(`${activePlayerName} is up first in turn-based mode.`);
+    }
+
+    resetButton.textContent = ":)";
     return;
   }
 
@@ -554,9 +602,10 @@ async function requestJson(url, options = {}) {
 async function createRoom() {
   try {
     const level = difficultySelect.value;
+    const playMode = playModeSelect.value;
     const payload = await requestJson("/api/rooms", {
       method: "POST",
-      body: JSON.stringify({ level }),
+      body: JSON.stringify({ level, playMode }),
     });
 
     connectToRoom(payload.roomCode, payload.playerId);
@@ -611,7 +660,7 @@ function connectToRoom(roomCode, playerId) {
 }
 
 async function sendAction(type, row, col) {
-  if (!client.roomCode || !client.playerId) {
+  if (!client.roomCode || !client.playerId || !isCurrentPlayersTurn()) {
     return;
   }
 
@@ -642,6 +691,7 @@ async function restartRoom() {
       body: JSON.stringify({
         playerId: client.playerId,
         level: difficultySelect.value,
+        playMode: playModeSelect.value,
       }),
     });
   } catch (error) {

@@ -128,6 +128,8 @@ test('a saved player session can be validated for reconnect after refresh', asyn
       ok: true,
       roomCode: createResult.body.roomCode,
       playerId: createResult.body.playerId,
+      playMode: 'simultaneous',
+      currentTurnPlayerNumber: 1,
     });
   } finally {
     server.kill('SIGTERM');
@@ -149,6 +151,87 @@ test('reconnect validation rejects stale player sessions', async () => {
 
     assert.equal(reconnectResult.response.status, 400);
     assert.equal(reconnectResult.body.error, 'Player not found in this room.');
+  } finally {
+    server.kill('SIGTERM');
+  }
+});
+
+test('turn-based rooms reject a move from the wrong player', async () => {
+  const server = await startServer();
+
+  try {
+    const createResult = await request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ level: 'beginner', playMode: 'turn-based' }),
+    });
+
+    const joinResult = await request(`/api/rooms/${createResult.body.roomCode}/join`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const wrongTurnResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        playerId: joinResult.body.playerId,
+        type: 'reveal',
+        row: 0,
+        col: 0,
+      }),
+    });
+
+    assert.equal(wrongTurnResult.response.status, 400);
+    assert.equal(wrongTurnResult.body.error, 'It is not your turn yet.');
+  } finally {
+    server.kill('SIGTERM');
+  }
+});
+
+test('turn-based rooms hand the turn to the other player after a valid move', async () => {
+  const server = await startServer();
+
+  try {
+    const createResult = await request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ level: 'beginner', playMode: 'turn-based' }),
+    });
+
+    const joinResult = await request(`/api/rooms/${createResult.body.roomCode}/join`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const firstMoveResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        playerId: createResult.body.playerId,
+        type: 'reveal',
+        row: 0,
+        col: 0,
+      }),
+    });
+
+    assert.equal(firstMoveResult.response.status, 200);
+
+    const roomStateResult = await request(
+      `/api/rooms/${createResult.body.roomCode}/session?playerId=${encodeURIComponent(joinResult.body.playerId)}`,
+    );
+
+    assert.equal(roomStateResult.response.status, 200);
+    assert.equal(roomStateResult.body.playMode, 'turn-based');
+    assert.equal(roomStateResult.body.currentTurnPlayerNumber, 2);
+
+    const secondMoveResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        playerId: joinResult.body.playerId,
+        type: 'flag',
+        row: 0,
+        col: 1,
+      }),
+    });
+
+    assert.equal(secondMoveResult.response.status, 200);
   } finally {
     server.kill('SIGTERM');
   }

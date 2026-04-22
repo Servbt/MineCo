@@ -14,6 +14,11 @@ const DIFFICULTIES = {
   expert: { rows: 16, cols: 30, mines: 99 },
 };
 
+const PLAY_MODES = {
+  simultaneous: "simultaneous",
+  turnBased: "turn-based",
+};
+
 const rooms = new Map();
 
 function createBoard(rows, cols) {
@@ -31,12 +36,32 @@ function createBoard(rows, cols) {
   );
 }
 
-function createRoom(level) {
+function normalizePlayMode(playMode) {
+  return playMode === PLAY_MODES.turnBased ? PLAY_MODES.turnBased : PLAY_MODES.simultaneous;
+}
+
+function getNextTurnPlayerNumber(playerNumber) {
+  return playerNumber === 1 ? 2 : 1;
+}
+
+function updateTurnForNewPlayer(room) {
+  if (room.playMode !== PLAY_MODES.turnBased || room.players.length < 2) {
+    return;
+  }
+
+  room.currentTurnPlayerNumber = room.lastAction
+    ? getNextTurnPlayerNumber(room.lastAction.playerNumber)
+    : 1;
+}
+
+function createRoom(level, playMode) {
   const settings = DIFFICULTIES[level] || DIFFICULTIES.beginner;
   const roomCode = generateRoomCode();
   const room = {
     roomCode,
     level,
+    playMode: normalizePlayMode(playMode),
+    currentTurnPlayerNumber: 1,
     rows: settings.rows,
     cols: settings.cols,
     mineTotal: settings.mines,
@@ -56,11 +81,13 @@ function createRoom(level) {
   return room;
 }
 
-function resetRoom(room, level) {
+function resetRoom(room, level, playMode) {
   const nextLevel = DIFFICULTIES[level] ? level : room.level;
   const settings = DIFFICULTIES[nextLevel];
 
   room.level = nextLevel;
+  room.playMode = normalizePlayMode(playMode || room.playMode);
+  room.currentTurnPlayerNumber = 1;
   room.rows = settings.rows;
   room.cols = settings.cols;
   room.mineTotal = settings.mines;
@@ -96,6 +123,7 @@ function addPlayer(room) {
   };
 
   room.players.push(player);
+  updateTurnForNewPlayer(room);
   return player;
 }
 
@@ -192,7 +220,7 @@ function revealCell(room, row, col, playerNumber) {
   const cell = room.board[row]?.[col];
 
   if (!cell || room.gameOver || cell.isRevealed || cell.isFlagged) {
-    return;
+    return false;
   }
 
   if (room.firstMove) {
@@ -216,7 +244,7 @@ function revealCell(room, row, col, playerNumber) {
       }
     }
 
-    return;
+    return true;
   }
 
   room.revealedSafeTiles += 1;
@@ -238,19 +266,41 @@ function revealCell(room, row, col, playerNumber) {
       }
     }
   }
+
+  return true;
 }
 
 function toggleFlag(room, row, col, playerNumber) {
   const cell = room.board[row]?.[col];
 
   if (!cell || room.gameOver || cell.isRevealed) {
-    return;
+    return false;
   }
 
   cell.isFlagged = !cell.isFlagged;
   cell.flaggedBy = cell.isFlagged ? playerNumber : null;
   room.flagCount += cell.isFlagged ? 1 : -1;
   room.lastAction = { type: "flag", row, col, playerNumber };
+  return true;
+}
+
+function requirePlayersTurn(room, playerNumber) {
+  if (
+    room.playMode === PLAY_MODES.turnBased
+    && room.players.length >= 2
+    && !room.gameOver
+    && room.currentTurnPlayerNumber !== playerNumber
+  ) {
+    throw new Error("It is not your turn yet.");
+  }
+}
+
+function advanceTurn(room, playerNumber) {
+  if (room.playMode !== PLAY_MODES.turnBased || room.players.length < 2 || room.gameOver) {
+    return;
+  }
+
+  room.currentTurnPlayerNumber = getNextTurnPlayerNumber(playerNumber);
 }
 
 function serializeRoom(room, playerId) {
@@ -262,6 +312,8 @@ function serializeRoom(room, playerId) {
     gameState: {
       roomCode: room.roomCode,
       level: room.level,
+      playMode: room.playMode,
+      currentTurnPlayerNumber: room.currentTurnPlayerNumber,
       rows: room.rows,
       cols: room.cols,
       mineTotal: room.mineTotal,
@@ -374,7 +426,7 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "POST" && pathname === "/api/rooms") {
       const body = await getJsonBody(request);
-      const room = createRoom(body.level || "beginner");
+      const room = createRoom(body.level || "beginner", body.playMode);
       const player = addPlayer(room);
 
       sendJson(response, 201, {
@@ -400,7 +452,13 @@ const server = http.createServer(async (request, response) => {
       const room = getRoomOrFail(roomCode);
 
       requirePlayer(room, playerId);
-      sendJson(response, 200, { ok: true, roomCode, playerId });
+      sendJson(response, 200, {
+        ok: true,
+        roomCode,
+        playerId,
+        playMode: room.playMode,
+        currentTurnPlayerNumber: room.currentTurnPlayerNumber,
+      });
       return;
     }
 
@@ -439,12 +497,19 @@ const server = http.createServer(async (request, response) => {
       const body = await getJsonBody(request);
       const player = requirePlayer(room, body.playerId);
 
+      requirePlayersTurn(room, player.playerNumber);
+
+      let changed = false;
       if (body.type === "reveal") {
-        revealCell(room, body.row, body.col, player.playerNumber);
+        changed = revealCell(room, body.row, body.col, player.playerNumber);
       } else if (body.type === "flag") {
-        toggleFlag(room, body.row, body.col, player.playerNumber);
+        changed = toggleFlag(room, body.row, body.col, player.playerNumber);
       } else {
         throw new Error("Unknown action.");
+      }
+
+      if (changed) {
+        advanceTurn(room, player.playerNumber);
       }
 
       broadcastRoom(room);
@@ -458,7 +523,7 @@ const server = http.createServer(async (request, response) => {
       const body = await getJsonBody(request);
 
       requirePlayer(room, body.playerId);
-      resetRoom(room, body.level || room.level);
+      resetRoom(room, body.level || room.level, body.playMode || room.playMode);
       broadcastRoom(room);
       sendJson(response, 200, { ok: true });
       return;
