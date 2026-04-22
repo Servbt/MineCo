@@ -1,0 +1,381 @@
+const DIFFICULTIES = {
+  beginner: { rows: 9, cols: 9, mines: 10 },
+  intermediate: { rows: 16, cols: 16, mines: 40 },
+  expert: { rows: 16, cols: 30, mines: 99 },
+};
+
+const boardElement = document.getElementById("board");
+const resetButton = document.getElementById("reset-button");
+const difficultySelect = document.getElementById("difficulty");
+const mineCountElement = document.getElementById("mine-count");
+const timerElement = document.getElementById("timer");
+const statusElement = document.getElementById("status");
+const roomCodeElement = document.getElementById("room-code");
+const playerCountElement = document.getElementById("player-count");
+const rosterElement = document.getElementById("roster");
+const playerNameElement = document.getElementById("player-name");
+const createRoomButton = document.getElementById("create-room-button");
+const joinRoomButton = document.getElementById("join-room-button");
+const roomCodeInput = document.getElementById("room-code-input");
+
+const PLAYER_COLORS = {
+  1: "player-1",
+  2: "player-2",
+};
+
+const client = {
+  playerId: null,
+  playerNumber: null,
+  roomCode: null,
+  eventSource: null,
+  timerId: null,
+  localState: createLocalPlaceholder(),
+};
+
+function createLocalPlaceholder() {
+  return {
+    level: "beginner",
+    rows: DIFFICULTIES.beginner.rows,
+    cols: DIFFICULTIES.beginner.cols,
+    mineTotal: DIFFICULTIES.beginner.mines,
+    board: buildBoard(DIFFICULTIES.beginner.rows, DIFFICULTIES.beginner.cols),
+    firstMove: true,
+    gameOver: false,
+    revealedSafeTiles: 0,
+    flagCount: 0,
+    startedAt: null,
+    elapsedSeconds: 0,
+    players: [],
+    roomCode: null,
+    lastAction: null,
+  };
+}
+
+function buildBoard(rows, cols) {
+  return Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: cols }, (_, col) => ({
+      row,
+      col,
+      isMine: false,
+      isRevealed: false,
+      isFlagged: false,
+      neighborMines: 0,
+      revealedBy: null,
+      flaggedBy: null,
+    })),
+  );
+}
+
+function updateFromServer(payload) {
+  client.playerId = payload.playerId;
+  client.playerNumber = payload.playerNumber;
+  client.localState = payload.gameState;
+
+  difficultySelect.value = client.localState.level;
+  renderBoard();
+  renderRoster();
+  updateHUD();
+  updateStatus();
+  updateIdentity();
+}
+
+function renderBoard() {
+  const state = client.localState;
+  boardElement.innerHTML = "";
+  boardElement.style.gridTemplateColumns = `repeat(${state.cols}, minmax(0, 1fr))`;
+
+  const canInteract = Boolean(client.roomCode) && !state.gameOver && state.players.length === 2;
+
+  for (let row = 0; row < state.rows; row += 1) {
+    for (let col = 0; col < state.cols; col += 1) {
+      const cell = state.board[row][col];
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.className = "tile";
+      button.dataset.row = String(row);
+      button.dataset.col = String(col);
+      button.setAttribute("role", "gridcell");
+      button.setAttribute("aria-label", describeCell(cell));
+      button.disabled = !canInteract;
+
+      if (cell.isRevealed) {
+        button.classList.add("revealed");
+
+        if (cell.isMine) {
+          button.classList.add("mine");
+          button.textContent = "*";
+        } else if (cell.neighborMines > 0) {
+          button.textContent = String(cell.neighborMines);
+          button.classList.add(`n${cell.neighborMines}`);
+        }
+      } else if (cell.isFlagged) {
+        button.classList.add("flagged");
+        button.textContent = "F";
+      }
+
+      if (state.lastAction && state.lastAction.row === row && state.lastAction.col === col) {
+        const colorClass = PLAYER_COLORS[state.lastAction.playerNumber];
+
+        if (colorClass) {
+          button.classList.add(`last-${colorClass}`);
+        }
+      }
+
+      boardElement.appendChild(button);
+    }
+  }
+}
+
+function renderRoster() {
+  const players = client.localState.players || [];
+  rosterElement.innerHTML = "";
+
+  for (const player of players) {
+    const chip = document.createElement("div");
+    chip.className = `player-chip player-${player.playerNumber}`;
+    chip.textContent = `${player.name}${player.playerId === client.playerId ? " (you)" : ""}`;
+    rosterElement.appendChild(chip);
+  }
+
+  if (players.length === 1) {
+    const waiting = document.createElement("div");
+    waiting.className = "player-chip";
+    waiting.textContent = "Waiting for player 2";
+    rosterElement.appendChild(waiting);
+  }
+}
+
+function updateHUD() {
+  const state = client.localState;
+  const minesLeft = Math.max(state.mineTotal - state.flagCount, 0);
+
+  mineCountElement.textContent = String(minesLeft).padStart(3, "0");
+  timerElement.textContent = String(Math.min(state.elapsedSeconds, 999)).padStart(3, "0");
+  roomCodeElement.textContent = state.roomCode || "------";
+  playerCountElement.textContent = `${state.players.length} / 2`;
+}
+
+function updateStatus() {
+  const state = client.localState;
+
+  if (!client.roomCode) {
+    setStatus("Create a room or join a friend to start playing together.");
+    resetButton.textContent = ":)";
+    return;
+  }
+
+  if (state.players.length < 2) {
+    setStatus("Room ready. Share the code and wait for your teammate.");
+    resetButton.textContent = ":|";
+    return;
+  }
+
+  if (state.gameOver) {
+    const lost = state.lastAction && state.board[state.lastAction.row][state.lastAction.col].isMine;
+    setStatus(lost ? "Boom. The team hit a mine." : "Board cleared. Team victory.");
+    resetButton.textContent = lost ? "X(" : "B)";
+    return;
+  }
+
+  if (state.firstMove) {
+    setStatus("Both players are connected. Make the first move together.");
+  } else if (state.lastAction) {
+    const actor = state.players.find((player) => player.playerNumber === state.lastAction.playerNumber);
+    const verb = state.lastAction.type === "flag" ? "flagged" : "revealed";
+    setStatus(`${actor ? actor.name : "A player"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}.`);
+  } else {
+    setStatus("Both players are connected. Start clearing the board.");
+  }
+
+  resetButton.textContent = ":)";
+}
+
+function updateIdentity() {
+  const label = client.playerNumber ? `Player ${client.playerNumber}` : "Spectator";
+  playerNameElement.textContent = label;
+}
+
+function describeCell(cell) {
+  if (cell.isFlagged) {
+    return `Flagged row ${cell.row + 1} column ${cell.col + 1}`;
+  }
+
+  if (!cell.isRevealed) {
+    return `Hidden row ${cell.row + 1} column ${cell.col + 1}`;
+  }
+
+  if (cell.isMine) {
+    return `Mine at row ${cell.row + 1} column ${cell.col + 1}`;
+  }
+
+  if (cell.neighborMines === 0) {
+    return `Empty row ${cell.row + 1} column ${cell.col + 1}`;
+  }
+
+  return `${cell.neighborMines} adjacent mines at row ${cell.row + 1} column ${cell.col + 1}`;
+}
+
+function setStatus(message) {
+  statusElement.textContent = message;
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Request failed");
+  }
+
+  return payload;
+}
+
+async function createRoom() {
+  try {
+    const level = difficultySelect.value;
+    const payload = await requestJson("/api/rooms", {
+      method: "POST",
+      body: JSON.stringify({ level }),
+    });
+
+    connectToRoom(payload.roomCode, payload.playerId);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function joinRoom() {
+  const roomCode = roomCodeInput.value.trim().toUpperCase();
+
+  if (!roomCode) {
+    setStatus("Enter a room code first.");
+    return;
+  }
+
+  try {
+    const payload = await requestJson(`/api/rooms/${roomCode}/join`, {
+      method: "POST",
+    });
+
+    connectToRoom(roomCode, payload.playerId);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function connectToRoom(roomCode, playerId) {
+  client.roomCode = roomCode;
+  client.playerId = playerId;
+
+  if (client.eventSource) {
+    client.eventSource.close();
+  }
+
+  const eventSource = new EventSource(
+    `/api/rooms/${roomCode}/events?playerId=${encodeURIComponent(playerId)}`,
+  );
+
+  eventSource.onmessage = (event) => {
+    updateFromServer(JSON.parse(event.data));
+  };
+
+  eventSource.onerror = () => {
+    setStatus("Connection dropped. Trying to reconnect.");
+  };
+
+  client.eventSource = eventSource;
+}
+
+async function sendAction(type, row, col) {
+  if (!client.roomCode || !client.playerId) {
+    return;
+  }
+
+  try {
+    await requestJson(`/api/rooms/${client.roomCode}/action`, {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: client.playerId,
+        type,
+        row,
+        col,
+      }),
+    });
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function restartRoom() {
+  if (!client.roomCode || !client.playerId) {
+    setStatus("Create or join a room first.");
+    return;
+  }
+
+  try {
+    await requestJson(`/api/rooms/${client.roomCode}/reset`, {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: client.playerId,
+        level: difficultySelect.value,
+      }),
+    });
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+boardElement.addEventListener("click", (event) => {
+  const tile = event.target.closest(".tile");
+
+  if (!tile) {
+    return;
+  }
+
+  sendAction("reveal", Number(tile.dataset.row), Number(tile.dataset.col));
+});
+
+boardElement.addEventListener("contextmenu", (event) => {
+  const tile = event.target.closest(".tile");
+
+  if (!tile) {
+    return;
+  }
+
+  event.preventDefault();
+  sendAction("flag", Number(tile.dataset.row), Number(tile.dataset.col));
+});
+
+boardElement.addEventListener("keydown", (event) => {
+  const tile = event.target.closest(".tile");
+
+  if (!tile || event.key.toLowerCase() !== "f") {
+    return;
+  }
+
+  event.preventDefault();
+  sendAction("flag", Number(tile.dataset.row), Number(tile.dataset.col));
+});
+
+createRoomButton.addEventListener("click", createRoom);
+joinRoomButton.addEventListener("click", joinRoom);
+resetButton.addEventListener("click", restartRoom);
+roomCodeInput.addEventListener("input", () => {
+  roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+});
+
+window.addEventListener("beforeunload", () => {
+  if (client.eventSource) {
+    client.eventSource.close();
+  }
+});
+
+renderBoard();
+updateHUD();
+updateStatus();
+updateIdentity();

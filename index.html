@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Co-op Minesweeper</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="panel">
+        <div class="panel-top">
+          <div>
+            <p class="eyebrow">Realtime two-player puzzle</p>
+            <h1>Co-op Minesweeper</h1>
+          </div>
+          <button id="reset-button" class="face-button" type="button" aria-label="Start a new round">
+            :)
+          </button>
+        </div>
+
+        <div class="lobby">
+          <div class="identity">
+            <span class="identity-label">You are</span>
+            <strong id="player-name">Connecting...</strong>
+          </div>
+
+          <div class="room-actions">
+            <button id="create-room-button" class="action-button" type="button">Create Room</button>
+            <div class="join-inline">
+              <input
+                id="room-code-input"
+                class="room-input"
+                type="text"
+                inputmode="text"
+                maxlength="6"
+                placeholder="Room code"
+                aria-label="Room code"
+              />
+              <button id="join-room-button" class="action-button" type="button">Join</button>
+            </div>
+          </div>
+
+          <div class="room-status">
+            <div class="room-card">
+              <span class="stat-label">Room</span>
+              <strong id="room-code">------</strong>
+            </div>
+            <div class="room-card">
+              <span class="stat-label">Players</span>
+              <strong id="player-count">0 / 2</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label class="difficulty-picker" for="difficulty">
+            <span>Difficulty</span>
+            <select id="difficulty">
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="expert">Expert</option>
+            </select>
+          </label>
+
+          <div class="stats">
+            <div class="stat-card">
+              <span class="stat-label">Mines</span>
+              <strong id="mine-count">000</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Time</span>
+              <strong id="timer">000</strong>
+            </div>
+          </div>
+        </div>
+
+        <div id="roster" class="roster" aria-live="polite"></div>
+        <p id="status" class="status" aria-live="polite">Create a room or join a friend to start playing together.</p>
+      </section>
+
+      <section class="board-shell" aria-label="Minesweeper board">
+        <div id="board" class="board" role="grid"></div>
+      </section>
+
+      <section class="help">
+        <p>Left click to reveal. Right click or press F to place a flag. Every move syncs live with your teammate.</p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
