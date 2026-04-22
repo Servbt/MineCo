@@ -32,6 +32,8 @@ const {
   getShareRoomCodeButtonLabel: getShareRoomCodeButtonText,
   getShareRoomCodeStatusMessage: getShareRoomCodeMessage,
   getLongPressVibrationPattern: getLongPressVibrationPulse,
+  getInviteLink: getRoomInviteLink,
+  getRoomCodeFromLocationSearch: getRoomCodeFromUrlSearch,
 } = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
@@ -209,13 +211,13 @@ function updateStatus() {
 
   if (state.players.length < 2) {
     if (state.firstMove) {
-      setStatus("Solo mode is ready. Start now, or share the code to turn it into co-op.");
+      setStatus("Solo mode is ready. Start now, or share the invite link to turn it into co-op.");
     } else if (state.lastAction) {
       const actor = state.players.find((player) => player.playerNumber === state.lastAction.playerNumber);
       const verb = state.lastAction.type === "flag" ? "flagged" : "revealed";
-      setStatus(`${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Share the code anytime for co-op.`);
+      setStatus(`${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Share the invite link anytime for co-op.`);
     } else {
-      setStatus("Solo mode is ready. Start now, or share the code to turn it into co-op.");
+      setStatus("Solo mode is ready. Start now, or share the invite link to turn it into co-op.");
     }
     resetButton.textContent = ":)";
     return;
@@ -270,6 +272,38 @@ function setStatus(message) {
   statusElement.textContent = message;
 }
 
+function getInviteLinkForRoom(roomCode = client.localState.roomCode) {
+  return getRoomInviteLink(roomCode, window.location.origin, window.location.pathname);
+}
+
+function syncRoomCodeToUrl(roomCode) {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const nextUrl = new URL(window.location.href);
+  const normalizedRoomCode = getRoomCodeFromUrlSearch(`?room=${roomCode || ''}`);
+
+  if (normalizedRoomCode) {
+    nextUrl.searchParams.set('room', normalizedRoomCode);
+  } else {
+    nextUrl.searchParams.delete('room');
+  }
+
+  window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+}
+
+function restoreRoomCodeFromUrl() {
+  const roomCodeFromUrl = getRoomCodeFromUrlSearch(window.location.search);
+
+  if (!roomCodeFromUrl) {
+    return;
+  }
+
+  roomCodeInput.value = roomCodeFromUrl;
+  setStatus(`Room code ${roomCodeFromUrl} loaded from the invite link. Tap Join when you're ready.`);
+}
+
 function getTileKey(row, col) {
   return `${row}:${col}`;
 }
@@ -303,18 +337,19 @@ function toggleFlagMode() {
 
 async function copyRoomCode() {
   const roomCode = client.localState.roomCode;
+  const inviteLink = getInviteLinkForRoom(roomCode);
 
-  if (!roomCode) {
+  if (!inviteLink) {
     setStatus(getCopyRoomCodeMessage('', false));
     return;
   }
 
   try {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(roomCode);
+      await navigator.clipboard.writeText(inviteLink);
     } else {
       const helperInput = document.createElement('input');
-      helperInput.value = roomCode;
+      helperInput.value = inviteLink;
       document.body.appendChild(helperInput);
       helperInput.select();
       document.execCommand('copy');
@@ -332,32 +367,34 @@ async function copyRoomCode() {
     updateHUD();
     setStatus(getCopyRoomCodeMessage(roomCode, true));
   } catch (error) {
-    setStatus(`Could not copy room code ${roomCode}. Copy it manually.`);
+    setStatus(`Could not copy the invite link for room ${roomCode}. Copy it manually.`);
   }
 }
 
 async function shareRoomCode() {
   const roomCode = client.localState.roomCode;
+  const inviteLink = getInviteLinkForRoom(roomCode);
 
-  if (!roomCode) {
+  if (!inviteLink) {
     setStatus(getShareRoomCodeMessage('', false));
     return;
   }
 
   if (!canUseNativeShare(navigator.share, roomCode)) {
-    setStatus(`Sharing is not available on this device. Use room code ${roomCode} manually.`);
+    setStatus(`Sharing is not available on this device. Use the invite link for room ${roomCode} manually.`);
     return;
   }
 
   try {
     await navigator.share({
-      title: 'MineCo room code',
+      title: 'MineCo invite',
       text: `Join my MineCo room with code ${roomCode}.`,
+      url: inviteLink,
     });
     setStatus(getShareRoomCodeMessage(roomCode, true));
   } catch (error) {
     if (error?.name !== 'AbortError') {
-      setStatus(`Could not open the share sheet for room code ${roomCode}.`);
+      setStatus(`Could not open the share sheet for room ${roomCode}.`);
     }
   }
 }
@@ -468,6 +505,8 @@ async function joinRoom() {
 function connectToRoom(roomCode, playerId) {
   client.roomCode = roomCode;
   client.playerId = playerId;
+  roomCodeInput.value = roomCode;
+  syncRoomCodeToUrl(roomCode);
 
   if (client.eventSource) {
     client.eventSource.close();
@@ -620,3 +659,4 @@ renderBoard();
 updateHUD();
 updateStatus();
 updateIdentity();
+restoreRoomCodeFromUrl();

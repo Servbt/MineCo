@@ -18,40 +18,68 @@ function shouldFlagOnLongPress(durationMs, thresholdMs = 250) {
   return durationMs >= thresholdMs;
 }
 
+function sanitizeRoomCode(roomCode) {
+  return String(roomCode || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 6);
+}
+
 function getCopyRoomCodeButtonLabel(copied) {
-  return copied ? 'Copied!' : 'Copy code';
+  return copied ? 'Copied link!' : 'Copy invite link';
 }
 
 function getCopyRoomCodeStatusMessage(roomCode, copied) {
-  if (!roomCode) {
-    return 'Create a room first to copy the code.';
+  const normalizedRoomCode = sanitizeRoomCode(roomCode);
+
+  if (!normalizedRoomCode) {
+    return 'Create a room first to copy the invite link.';
   }
 
   if (copied) {
-    return `Copied room code ${roomCode}. Send it to your teammate.`;
+    return `Copied invite link for room ${normalizedRoomCode}. Send it to your teammate.`;
   }
 
-  return `Room code ${roomCode} is ready to share.`;
+  return `Invite link for room ${normalizedRoomCode} is ready to share.`;
 }
 
 function supportsNativeShare(nativeShareFn, roomCode) {
-  return typeof nativeShareFn === 'function' && Boolean(roomCode);
+  return typeof nativeShareFn === 'function' && Boolean(sanitizeRoomCode(roomCode));
 }
 
 function getShareRoomCodeButtonLabel(canShare) {
-  return canShare ? 'Share code' : 'Share unavailable';
+  return canShare ? 'Share invite' : 'Share unavailable';
 }
 
 function getShareRoomCodeStatusMessage(roomCode, shared) {
-  if (!roomCode) {
-    return 'Create a room first to share the code.';
+  const normalizedRoomCode = sanitizeRoomCode(roomCode);
+
+  if (!normalizedRoomCode) {
+    return 'Create a room first to share the invite link.';
   }
 
   if (shared) {
-    return `Share sheet opened for room code ${roomCode}.`;
+    return `Share sheet opened for the invite link to room ${normalizedRoomCode}.`;
   }
 
-  return `Room code ${roomCode} is ready to share from your phone.`;
+  return `Invite link for room ${normalizedRoomCode} is ready to share from your phone.`;
+}
+
+function getInviteLink(roomCode, origin, pathname = '/') {
+  const normalizedRoomCode = sanitizeRoomCode(roomCode);
+
+  if (!normalizedRoomCode || !origin) {
+    return '';
+  }
+
+  const inviteUrl = new URL(pathname || '/', origin);
+  inviteUrl.searchParams.set('room', normalizedRoomCode);
+  return inviteUrl.toString();
+}
+
+function getRoomCodeFromLocationSearch(search) {
+  const params = new URLSearchParams(search || '');
+  return sanitizeRoomCode(params.get('room'));
 }
 
 function getLongPressVibrationPattern() {
@@ -69,6 +97,8 @@ const exported = {
   getShareRoomCodeButtonLabel,
   getShareRoomCodeStatusMessage,
   getLongPressVibrationPattern,
+  getInviteLink,
+  getRoomCodeFromLocationSearch,
 };
 
 if (typeof module !== 'undefined' && module.exports) {
