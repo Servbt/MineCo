@@ -17,6 +17,13 @@ const playerNameElement = document.getElementById("player-name");
 const createRoomButton = document.getElementById("create-room-button");
 const joinRoomButton = document.getElementById("join-room-button");
 const roomCodeInput = document.getElementById("room-code-input");
+const flagModeButton = document.getElementById("flag-mode-button");
+
+const {
+  getPrimaryAction: getTilePrimaryAction,
+  getFlagModeButtonLabel: getFlagModeButtonText,
+  getFlagModeStatusMessage: getFlagModeTouchMessage,
+} = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
   1: "player-1",
@@ -29,6 +36,7 @@ const client = {
   roomCode: null,
   eventSource: null,
   timerId: null,
+  flagMode: false,
   localState: createLocalPlaceholder(),
 };
 
@@ -228,6 +236,18 @@ function setStatus(message) {
   statusElement.textContent = message;
 }
 
+function updateFlagModeButton() {
+  flagModeButton.textContent = getFlagModeButtonText(client.flagMode);
+  flagModeButton.setAttribute("aria-pressed", String(client.flagMode));
+  flagModeButton.classList.toggle("active", client.flagMode);
+}
+
+function toggleFlagMode() {
+  client.flagMode = !client.flagMode;
+  updateFlagModeButton();
+  setStatus(getFlagModeTouchMessage(client.flagMode));
+}
+
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -345,7 +365,8 @@ boardElement.addEventListener("click", (event) => {
     return;
   }
 
-  sendAction("reveal", Number(tile.dataset.row), Number(tile.dataset.col));
+  const action = getTilePrimaryAction(client.flagMode);
+  sendAction(action, Number(tile.dataset.row), Number(tile.dataset.col));
 });
 
 boardElement.addEventListener("contextmenu", (event) => {
@@ -373,6 +394,7 @@ boardElement.addEventListener("keydown", (event) => {
 createRoomButton.addEventListener("click", createRoom);
 joinRoomButton.addEventListener("click", joinRoom);
 resetButton.addEventListener("click", restartRoom);
+flagModeButton.addEventListener("click", toggleFlagMode);
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });
@@ -383,6 +405,7 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+updateFlagModeButton();
 renderBoard();
 updateHUD();
 updateStatus();

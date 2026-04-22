@@ -54,14 +54,25 @@
         </div>
 
         <div class="controls">
-          <label class="difficulty-picker" for="difficulty">
-            <span>Difficulty</span>
-            <select id="difficulty">
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="expert">Expert</option>
-            </select>
-          </label>
+          <div class="play-controls">
+            <label class="difficulty-picker" for="difficulty">
+              <span>Difficulty</span>
+              <select id="difficulty">
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="expert">Expert</option>
+              </select>
+            </label>
+
+            <button
+              id="flag-mode-button"
+              class="action-button flag-mode-button"
+              type="button"
+              aria-pressed="false"
+            >
+              Flag mode: Off
+            </button>
+          </div>
 
           <div class="stats">
             <div class="stat-card">
@@ -84,10 +95,11 @@
       </section>
 
       <section class="help">
-        <p>Left click to reveal. Right click or press F to place a flag. Every move syncs live with your teammate.</p>
+        <p>Tap or click to reveal. On phones and tablets, use the Flag mode button to mark mines. Right click or press F still places a flag on desktop.</p>
       </section>
     </main>
 
+    <script src="interaction-mode.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

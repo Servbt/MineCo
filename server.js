@@ -364,7 +364,10 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "GET" && (pathname === "/styles.css" || pathname === "/script.js")) {
+    if (
+      request.method === "GET"
+      && (pathname === "/styles.css" || pathname === "/script.js" || pathname === "/interaction-mode.js")
+    ) {
       sendFile(response, pathname.slice(1));
       return;
     }
