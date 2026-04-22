@@ -165,6 +165,28 @@ h1 {
   border: 1px solid var(--panel-border);
 }
 
+.room-card--room-code {
+  display: grid;
+  gap: 8px;
+}
+
+.copy-room-code-button {
+  width: fit-content;
+  padding: 8px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #fff3e0;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.copy-room-code-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .player-chip {
   display: inline-flex;
   align-items: center;

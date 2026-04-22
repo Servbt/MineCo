@@ -18,11 +18,15 @@ const createRoomButton = document.getElementById("create-room-button");
 const joinRoomButton = document.getElementById("join-room-button");
 const roomCodeInput = document.getElementById("room-code-input");
 const flagModeButton = document.getElementById("flag-mode-button");
+const copyRoomCodeButton = document.getElementById("copy-room-code-button");
 
 const {
   getPrimaryAction: getTilePrimaryAction,
   getFlagModeButtonLabel: getFlagModeButtonText,
   getFlagModeStatusMessage: getFlagModeTouchMessage,
+  shouldFlagOnLongPress: shouldTriggerFlagOnLongPress,
+  getCopyRoomCodeButtonLabel: getCopyRoomCodeButtonText,
+  getCopyRoomCodeStatusMessage: getCopyRoomCodeMessage,
 } = window.MineCoInteractionMode;
 
 const PLAYER_COLORS = {
@@ -37,6 +41,16 @@ const client = {
   eventSource: null,
   timerId: null,
   flagMode: false,
+  roomCodeCopied: false,
+  roomCodeCopyTimeoutId: null,
+  longPress: {
+    timerId: null,
+    startedAt: 0,
+    tileKey: null,
+    pointerId: null,
+    handled: false,
+  },
+  suppressClickTileKey: null,
   localState: createLocalPlaceholder(),
 };
 
@@ -75,9 +89,19 @@ function buildBoard(rows, cols) {
 }
 
 function updateFromServer(payload) {
+  const previousRoomCode = client.localState.roomCode;
+
   client.playerId = payload.playerId;
   client.playerNumber = payload.playerNumber;
   client.localState = payload.gameState;
+
+  if (previousRoomCode !== client.localState.roomCode) {
+    client.roomCodeCopied = false;
+    if (client.roomCodeCopyTimeoutId) {
+      clearTimeout(client.roomCodeCopyTimeoutId);
+      client.roomCodeCopyTimeoutId = null;
+    }
+  }
 
   difficultySelect.value = client.localState.level;
   renderBoard();
@@ -162,6 +186,8 @@ function updateHUD() {
   timerElement.textContent = String(Math.min(state.elapsedSeconds, 999)).padStart(3, "0");
   roomCodeElement.textContent = state.roomCode || "------";
   playerCountElement.textContent = `${state.players.length} / 2`;
+  copyRoomCodeButton.disabled = !state.roomCode;
+  copyRoomCodeButton.textContent = getCopyRoomCodeButtonText(client.roomCodeCopied && Boolean(state.roomCode));
 }
 
 function updateStatus() {
@@ -236,6 +262,25 @@ function setStatus(message) {
   statusElement.textContent = message;
 }
 
+function getTileKey(row, col) {
+  return `${row}:${col}`;
+}
+
+function clearLongPressTimer() {
+  if (client.longPress.timerId) {
+    clearTimeout(client.longPress.timerId);
+    client.longPress.timerId = null;
+  }
+}
+
+function resetLongPressState() {
+  clearLongPressTimer();
+  client.longPress.startedAt = 0;
+  client.longPress.tileKey = null;
+  client.longPress.pointerId = null;
+  client.longPress.handled = false;
+}
+
 function updateFlagModeButton() {
   flagModeButton.textContent = getFlagModeButtonText(client.flagMode);
   flagModeButton.setAttribute("aria-pressed", String(client.flagMode));
@@ -246,6 +291,89 @@ function toggleFlagMode() {
   client.flagMode = !client.flagMode;
   updateFlagModeButton();
   setStatus(getFlagModeTouchMessage(client.flagMode));
+}
+
+async function copyRoomCode() {
+  const roomCode = client.localState.roomCode;
+
+  if (!roomCode) {
+    setStatus(getCopyRoomCodeMessage('', false));
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(roomCode);
+    } else {
+      const helperInput = document.createElement('input');
+      helperInput.value = roomCode;
+      document.body.appendChild(helperInput);
+      helperInput.select();
+      document.execCommand('copy');
+      helperInput.remove();
+    }
+
+    client.roomCodeCopied = true;
+    if (client.roomCodeCopyTimeoutId) {
+      clearTimeout(client.roomCodeCopyTimeoutId);
+    }
+    client.roomCodeCopyTimeoutId = setTimeout(() => {
+      client.roomCodeCopied = false;
+      updateHUD();
+    }, 1600);
+    updateHUD();
+    setStatus(getCopyRoomCodeMessage(roomCode, true));
+  } catch (error) {
+    setStatus(`Could not copy room code ${roomCode}. Copy it manually.`);
+  }
+}
+
+function beginLongPress(tile, pointerId) {
+  if (client.flagMode) {
+    return;
+  }
+
+  const row = Number(tile.dataset.row);
+  const col = Number(tile.dataset.col);
+  const tileKey = getTileKey(row, col);
+
+  resetLongPressState();
+  client.longPress.startedAt = Date.now();
+  client.longPress.tileKey = tileKey;
+  client.longPress.pointerId = pointerId;
+  client.longPress.timerId = setTimeout(() => {
+    client.longPress.handled = true;
+    client.suppressClickTileKey = tileKey;
+    sendAction('flag', row, col);
+  }, 250);
+}
+
+function endLongPress(tile, pointerId) {
+  if (!client.longPress.tileKey) {
+    return false;
+  }
+
+  const tileKey = getTileKey(Number(tile.dataset.row), Number(tile.dataset.col));
+  const samePointer = client.longPress.pointerId === null || client.longPress.pointerId === pointerId;
+  const handled = client.longPress.handled;
+  const shouldHandle = samePointer && tileKey === client.longPress.tileKey;
+
+  if (!shouldHandle) {
+    return false;
+  }
+
+  const durationMs = Date.now() - client.longPress.startedAt;
+  clearLongPressTimer();
+
+  if (!handled && shouldTriggerFlagOnLongPress(durationMs, 250)) {
+    client.longPress.handled = true;
+    client.suppressClickTileKey = tileKey;
+    sendAction('flag', Number(tile.dataset.row), Number(tile.dataset.col));
+  }
+
+  const wasHandled = client.longPress.handled;
+  resetLongPressState();
+  return wasHandled;
 }
 
 async function requestJson(url, options = {}) {
@@ -358,10 +486,49 @@ async function restartRoom() {
   }
 }
 
+boardElement.addEventListener("pointerdown", (event) => {
+  const tile = event.target.closest(".tile");
+
+  if (!tile || event.pointerType === "mouse") {
+    return;
+  }
+
+  if (tile.setPointerCapture) {
+    try {
+      tile.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Synthetic events in tests/browser automation may not have an active pointer.
+    }
+  }
+
+  beginLongPress(tile, event.pointerId);
+});
+
+boardElement.addEventListener("pointerup", (event) => {
+  const tile = event.target.closest(".tile");
+
+  if (!tile || event.pointerType === "mouse") {
+    return;
+  }
+
+  endLongPress(tile, event.pointerId);
+});
+
+boardElement.addEventListener("pointercancel", () => {
+  resetLongPressState();
+});
+
 boardElement.addEventListener("click", (event) => {
   const tile = event.target.closest(".tile");
 
   if (!tile) {
+    return;
+  }
+
+  const tileKey = getTileKey(Number(tile.dataset.row), Number(tile.dataset.col));
+
+  if (client.suppressClickTileKey === tileKey) {
+    client.suppressClickTileKey = null;
     return;
   }
 
@@ -395,6 +562,7 @@ createRoomButton.addEventListener("click", createRoom);
 joinRoomButton.addEventListener("click", joinRoom);
 resetButton.addEventListener("click", restartRoom);
 flagModeButton.addEventListener("click", toggleFlagMode);
+copyRoomCodeButton.addEventListener("click", copyRoomCode);
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });
