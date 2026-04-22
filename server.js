@@ -426,10 +426,6 @@ const server = http.createServer(async (request, response) => {
       const body = await getJsonBody(request);
       const player = requirePlayer(room, body.playerId);
 
-      if (room.players.length < 2) {
-        throw new Error("A second player needs to join before the game starts.");
-      }
-
       if (body.type === "reveal") {
         revealCell(room, body.row, body.col, player.playerNumber);
       } else if (body.type === "flag") {

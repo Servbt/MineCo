@@ -4,6 +4,7 @@
   "private": true,
   "description": "Two-player online co-op Minesweeper",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   }
 }

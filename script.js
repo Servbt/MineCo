@@ -84,7 +84,7 @@ function renderBoard() {
   boardElement.innerHTML = "";
   boardElement.style.gridTemplateColumns = `repeat(${state.cols}, minmax(0, 1fr))`;
 
-  const canInteract = Boolean(client.roomCode) && !state.gameOver && state.players.length === 2;
+  const canInteract = Boolean(client.roomCode) && !state.gameOver && state.players.length >= 1;
 
   for (let row = 0; row < state.rows; row += 1) {
     for (let col = 0; col < state.cols; col += 1) {
@@ -166,8 +166,16 @@ function updateStatus() {
   }
 
   if (state.players.length < 2) {
-    setStatus("Room ready. Share the code and wait for your teammate.");
-    resetButton.textContent = ":|";
+    if (state.firstMove) {
+      setStatus("Solo mode is ready. Start now, or share the code to turn it into co-op.");
+    } else if (state.lastAction) {
+      const actor = state.players.find((player) => player.playerNumber === state.lastAction.playerNumber);
+      const verb = state.lastAction.type === "flag" ? "flagged" : "revealed";
+      setStatus(`${actor ? actor.name : "You"} ${verb} row ${state.lastAction.row + 1}, column ${state.lastAction.col + 1}. Share the code anytime for co-op.`);
+    } else {
+      setStatus("Solo mode is ready. Start now, or share the code to turn it into co-op.");
+    }
+    resetButton.textContent = ":)";
     return;
   }
 
