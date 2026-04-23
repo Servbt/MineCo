@@ -55,7 +55,7 @@ function shouldTickTimer(timerState = {}) {
   return normalizeTimestamp(timerState.startedAt) !== null && !timerState.gameOver;
 }
 
-const exported = {
+const timerExports = {
   getElapsedSeconds,
   startTimer,
   stopTimer,
@@ -63,13 +63,13 @@ const exported = {
 };
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = exported;
+  module.exports = timerExports;
 }
 
 if (typeof globalThis !== 'undefined') {
-  globalThis.MineCoTimer = exported;
+  globalThis.MineCoTimer = timerExports;
 }
 
 if (typeof window !== 'undefined') {
-  window.MineCoTimer = exported;
+  window.MineCoTimer = timerExports;
 }

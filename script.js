@@ -46,7 +46,7 @@ const {
 
 const {
   getElapsedSeconds: getTimerElapsedSeconds,
-  shouldTickTimer,
+  shouldTickTimer: shouldRunTimerTick,
 } = window.MineCoTimer;
 
 const PLAYER_COLORS = {
@@ -298,7 +298,7 @@ function stopHUDTimer() {
 }
 
 function syncHUDTimer() {
-  if (!shouldTickTimer(client.localState)) {
+  if (!shouldRunTimerTick(client.localState)) {
     stopHUDTimer();
     updateHUD();
     return;
