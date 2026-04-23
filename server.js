@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
+const { getElapsedSeconds, startTimer, stopTimer } = require("./timer.js");
 
 const PORT = process.env.PORT || 3000;
 const HOST = "0.0.0.0";
@@ -71,6 +72,7 @@ function createRoom(level, playMode) {
     revealedSafeTiles: 0,
     flagCount: 0,
     startedAt: null,
+    finishedAt: null,
     elapsedSeconds: 0,
     players: [],
     watchers: new Set(),
@@ -97,6 +99,7 @@ function resetRoom(room, level, playMode) {
   room.revealedSafeTiles = 0;
   room.flagCount = 0;
   room.startedAt = null;
+  room.finishedAt = null;
   room.elapsedSeconds = 0;
   room.lastAction = null;
 }
@@ -226,7 +229,7 @@ function revealCell(room, row, col, playerNumber) {
   if (room.firstMove) {
     placeMines(room, row, col);
     room.firstMove = false;
-    room.startedAt = Date.now();
+    Object.assign(room, startTimer(room));
   }
 
   cell.isRevealed = true;
@@ -234,6 +237,7 @@ function revealCell(room, row, col, playerNumber) {
   room.lastAction = { type: "reveal", row, col, playerNumber };
 
   if (cell.isMine) {
+    Object.assign(room, stopTimer(room));
     room.gameOver = true;
 
     for (const boardRow of room.board) {
@@ -254,6 +258,7 @@ function revealCell(room, row, col, playerNumber) {
   }
 
   if (room.revealedSafeTiles === room.rows * room.cols - room.mineTotal) {
+    Object.assign(room, stopTimer(room));
     room.gameOver = true;
 
     for (const boardRow of room.board) {
@@ -323,7 +328,8 @@ function serializeRoom(room, playerId) {
       revealedSafeTiles: room.revealedSafeTiles,
       flagCount: room.flagCount,
       startedAt: room.startedAt,
-      elapsedSeconds: room.startedAt ? Math.floor((Date.now() - room.startedAt) / 1000) : 0,
+      finishedAt: room.finishedAt,
+      elapsedSeconds: getElapsedSeconds(room),
       players: room.players,
       lastAction: room.lastAction,
     },
@@ -418,7 +424,12 @@ const server = http.createServer(async (request, response) => {
 
     if (
       request.method === "GET"
-      && (pathname === "/styles.css" || pathname === "/script.js" || pathname === "/interaction-mode.js")
+      && (
+        pathname === "/styles.css"
+        || pathname === "/script.js"
+        || pathname === "/interaction-mode.js"
+        || pathname === "/timer.js"
+      )
     ) {
       sendFile(response, pathname.slice(1));
       return;

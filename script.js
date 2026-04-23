@@ -44,6 +44,11 @@ const {
   getColorSchemeStorageKey: getColorSchemeStorageKeyName,
 } = window.MineCoInteractionMode;
 
+const {
+  getElapsedSeconds: getTimerElapsedSeconds,
+  shouldTickTimer,
+} = window.MineCoTimer;
+
 const PLAYER_COLORS = {
   1: "player-1",
   2: "player-2",
@@ -84,6 +89,7 @@ function createLocalPlaceholder() {
     revealedSafeTiles: 0,
     flagCount: 0,
     startedAt: null,
+    finishedAt: null,
     elapsedSeconds: 0,
     players: [],
     currentTurnPlayerNumber: 1,
@@ -175,7 +181,7 @@ function updateFromServer(payload) {
   playModeSelect.value = client.localState.playMode || "simultaneous";
   renderBoard();
   renderRoster();
-  updateHUD();
+  syncHUDTimer();
   updateStatus();
   updateIdentity();
 
@@ -272,7 +278,7 @@ function updateHUD() {
   const minesLeft = Math.max(state.mineTotal - state.flagCount, 0);
 
   mineCountElement.textContent = String(minesLeft).padStart(3, "0");
-  timerElement.textContent = String(Math.min(state.elapsedSeconds, 999)).padStart(3, "0");
+  timerElement.textContent = String(Math.min(getTimerElapsedSeconds(state), 999)).padStart(3, "0");
   roomCodeElement.textContent = state.roomCode || "------";
   playerCountElement.textContent = `${state.players.length} / 2`;
   copyRoomCodeButton.disabled = !state.roomCode;
@@ -280,6 +286,33 @@ function updateHUD() {
   const shareAvailable = canUseNativeShare(navigator.share, state.roomCode);
   shareRoomCodeButton.disabled = !shareAvailable;
   shareRoomCodeButton.textContent = getShareRoomCodeButtonText(shareAvailable);
+}
+
+function stopHUDTimer() {
+  if (!client.timerId) {
+    return;
+  }
+
+  clearInterval(client.timerId);
+  client.timerId = null;
+}
+
+function syncHUDTimer() {
+  if (!shouldTickTimer(client.localState)) {
+    stopHUDTimer();
+    updateHUD();
+    return;
+  }
+
+  if (client.timerId) {
+    updateHUD();
+    return;
+  }
+
+  updateHUD();
+  client.timerId = setInterval(() => {
+    updateHUD();
+  }, 1000);
 }
 
 function updateStatus() {
@@ -698,6 +731,8 @@ function connectToRoom(roomCode, playerId) {
     client.eventSource.close();
   }
 
+  stopHUDTimer();
+
   const eventSource = new EventSource(
     `/api/rooms/${roomCode}/events?playerId=${encodeURIComponent(playerId)}`,
   );
@@ -843,13 +878,15 @@ window.addEventListener("beforeunload", () => {
   if (client.eventSource) {
     client.eventSource.close();
   }
+
+  stopHUDTimer();
 });
 
 updateFlagModeButton();
 populateColorSchemeOptions();
 restoreColorScheme();
 renderBoard();
-updateHUD();
+syncHUDTimer();
 updateStatus();
 updateIdentity();
 reconnectToLastRoom();
