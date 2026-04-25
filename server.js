@@ -300,8 +300,12 @@ function requirePlayersTurn(room, playerNumber) {
   }
 }
 
-function advanceTurn(room, playerNumber) {
+function advanceTurn(room, playerNumber, actionType) {
   if (room.playMode !== PLAY_MODES.turnBased || room.players.length < 2 || room.gameOver) {
+    return;
+  }
+
+  if (actionType !== "reveal") {
     return;
   }
 
@@ -520,7 +524,7 @@ const server = http.createServer(async (request, response) => {
       }
 
       if (changed) {
-        advanceTurn(room, player.playerNumber);
+        advanceTurn(room, player.playerNumber, body.type);
       }
 
       broadcastRoom(room);

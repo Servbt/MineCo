@@ -187,7 +187,7 @@ test('turn-based rooms reject a move from the wrong player', async () => {
   }
 });
 
-test('turn-based rooms hand the turn to the other player after a valid move', async () => {
+test('turn-based rooms hand the turn to the other player after a reveal move', async () => {
   const server = await startServer();
 
   try {
@@ -220,8 +220,38 @@ test('turn-based rooms hand the turn to the other player after a valid move', as
     assert.equal(roomStateResult.response.status, 200);
     assert.equal(roomStateResult.body.playMode, 'turn-based');
     assert.equal(roomStateResult.body.currentTurnPlayerNumber, 2);
+  } finally {
+    server.kill('SIGTERM');
+  }
+});
 
-    const secondMoveResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+test('turn-based rooms keep the same player turn after a flag move', async () => {
+  const server = await startServer();
+
+  try {
+    const createResult = await request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ level: 'beginner', playMode: 'turn-based' }),
+    });
+
+    const joinResult = await request(`/api/rooms/${createResult.body.roomCode}/join`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const firstMoveResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        playerId: createResult.body.playerId,
+        type: 'reveal',
+        row: 0,
+        col: 0,
+      }),
+    });
+
+    assert.equal(firstMoveResult.response.status, 200);
+
+    const flagMoveResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
       method: 'POST',
       body: JSON.stringify({
         playerId: joinResult.body.playerId,
@@ -231,7 +261,26 @@ test('turn-based rooms hand the turn to the other player after a valid move', as
       }),
     });
 
-    assert.equal(secondMoveResult.response.status, 200);
+    assert.equal(flagMoveResult.response.status, 200);
+
+    const roomStateResult = await request(
+      `/api/rooms/${createResult.body.roomCode}/session?playerId=${encodeURIComponent(joinResult.body.playerId)}`,
+    );
+
+    assert.equal(roomStateResult.response.status, 200);
+    assert.equal(roomStateResult.body.currentTurnPlayerNumber, 2);
+
+    const revealAfterFlagResult = await request(`/api/rooms/${createResult.body.roomCode}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        playerId: joinResult.body.playerId,
+        type: 'reveal',
+        row: 0,
+        col: 2,
+      }),
+    });
+
+    assert.equal(revealAfterFlagResult.response.status, 200);
   } finally {
     server.kill('SIGTERM');
   }
